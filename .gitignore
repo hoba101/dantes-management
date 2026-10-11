@@ -1,0 +1,22 @@
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+.env
+.env.*
+!.env.example
+
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-error.log*
+
+.DS_Store
+.vscode/
+.idea/
+
+# runtime uploads (user data, not source)
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
