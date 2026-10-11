@@ -1,4 +1,4 @@
-# Dental Platform
+# dantes-management
 
 A dental provider marketplace and educational platform targeting **Egypt**, with a
 bilingual (Arabic / English) data model. Patients book treatment either with a
@@ -41,11 +41,13 @@ it is the union of doctor and student, used by the provider search/detail routes
 
 ## Setup
 
-**Requirements:** Node.js 20+, PostgreSQL 18+, and the `psql` client.
+**Requirements:** Node.js 20+, PostgreSQL 16+, and the `psql` client.
 
-> PostgreSQL 18 is required despite the "16+" note in the migration header:
-> `uuid-ossp`'s `uuid_generate_v7()` was only added in PG 18. On PG 16/17 the
-> schema fails to apply.
+> **`uuid_generate_v7()` is not stock PostgreSQL.** The migrations call it 19 times,
+> but `001` only creates `uuid-ossp`, `pgcrypto` and `btree_gist` — and no version
+> of `uuid-ossp` provides it. (PG 18 added a *core* `uuidv7()`, not a uuid-ossp one;
+> the PG 18 uuid-ossp docs still list only v1/v1mc/v3/v4/v5.) So migration `001`
+> fails on any stock PostgreSQL until you supply the function. See Known issues.
 
 ```bash
 npm run setup                      # installs backend + frontend deps
@@ -103,6 +105,28 @@ any non-local deployment.
 
 ## Known issues
 
+- **`uuid_generate_v7()` is undefined (blocking).** 19 call sites across `001`,
+  `004` and `005`; nothing in the repo defines the function. Migrations cannot run
+  until you add it. Cheapest fix — create it before `001`:
+
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS "pg_uuidv7";   -- third-party, needs superuser
+  ```
+
+  Or define it yourself, which needs no extra extension:
+
+  ```sql
+  CREATE OR REPLACE FUNCTION uuid_generate_v7() RETURNS uuid AS $$
+    SELECT encode(
+      set_bit(set_bit(overlay(uuid_send(gen_random_uuid())
+        placing substring(int8send(floor(extract(epoch FROM clock_timestamp())*1000)::bigint) from 3)
+        from 1 for 6), 52, 1), 53, 1), 'hex')::uuid;
+  $$ LANGUAGE plpgsql VOLATILE;
+  ```
+
+  Drop-in replacements that need no new function: `gen_random_uuid()` (built in
+  since PG 13, v4 — loses the time-sortable property but is otherwise fine), or
+  PG 18+'s built-in `uuidv7()`.
 - **Migration `002` is missing** — files run `001`, `003`, `004`, `005`. If
   anything in `003`–`005` depends on a `002` change, a fresh setup will fail.
 - **`npm run db:migrate` is broken** — it passes a directory to `psql -f`, which
