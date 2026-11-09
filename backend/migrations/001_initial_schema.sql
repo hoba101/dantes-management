@@ -62,7 +62,7 @@ $$ LANGUAGE plpgsql;
 -- 3. Users (base authentication table)
 -- =============================================================================
 CREATE TABLE users (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email           VARCHAR(255) UNIQUE NOT NULL,
     phone           VARCHAR(20) UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
@@ -82,7 +82,7 @@ CREATE INDEX idx_users_email_lookup ON users(email);
 -- 4. Profiles (shared fields across all roles — 1:1 with users)
 -- =============================================================================
 CREATE TABLE profiles (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     full_name_ar    VARCHAR(255) NOT NULL,
     full_name_en    VARCHAR(255) NOT NULL,
@@ -113,7 +113,7 @@ CREATE TABLE governorates (
 
 -- 6a. Doctor profiles
 CREATE TABLE doctor_profiles (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id          UUID UNIQUE NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     license_number      VARCHAR(100) UNIQUE NOT NULL,
     license_verified    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -132,7 +132,7 @@ CREATE TRIGGER trg_doctor_profiles_updated_at
 
 -- 6b. Student profiles
 CREATE TABLE student_profiles (
-    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id              UUID UNIQUE NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     university              VARCHAR(255) NOT NULL,
     faculty                 VARCHAR(255) NOT NULL,
@@ -153,7 +153,7 @@ CREATE TRIGGER trg_student_profiles_updated_at
 
 -- 6c. Patient profiles
 CREATE TABLE patient_profiles (
-    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id              UUID UNIQUE NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     emergency_contact_name  VARCHAR(255),
     emergency_contact_phone VARCHAR(20),
@@ -169,7 +169,7 @@ CREATE TRIGGER trg_patient_profiles_updated_at
 -- 7. Education history (shared between doctors and students)
 -- =============================================================================
 CREATE TABLE education_history (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id      UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     institution     VARCHAR(255) NOT NULL,
     degree          VARCHAR(255),
@@ -187,7 +187,7 @@ CREATE INDEX idx_education_profile ON education_history(profile_id);
 -- 8. Dental specialties catalog
 -- =============================================================================
 CREATE TABLE specialties (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name_ar     VARCHAR(255) NOT NULL,
     name_en     VARCHAR(255) NOT NULL,
     description TEXT,
@@ -207,7 +207,7 @@ CREATE INDEX idx_doc_specialties_specialty ON doctor_specialties(specialty_id);
 -- 9. Dental services / treatments catalog
 -- =============================================================================
 CREATE TABLE services (
-    id                      UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name_ar                 VARCHAR(255) NOT NULL,
     name_en                 VARCHAR(255) NOT NULL,
     description_ar          TEXT,
@@ -224,7 +224,7 @@ CREATE INDEX idx_services_category ON services(category);
 -- 9a. Doctor service pricing (per-doctor, variable price)
 -- =============================================================================
 CREATE TABLE doctor_service_prices (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     doctor_id     UUID NOT NULL REFERENCES doctor_profiles(id) ON DELETE CASCADE,
     service_id    UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
     price         DECIMAL(10,2) NOT NULL CHECK (price >= 0),
@@ -245,7 +245,7 @@ CREATE TRIGGER trg_doctor_service_prices_updated_at
 -- 9b. Student service offerings (free / materials-only)
 -- =============================================================================
 CREATE TABLE student_service_offerings (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id          UUID NOT NULL REFERENCES student_profiles(id) ON DELETE CASCADE,
     service_id          UUID NOT NULL REFERENCES services(id) ON DELETE CASCADE,
     materials_fee       DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (materials_fee >= 0),
@@ -267,7 +267,7 @@ CREATE TRIGGER trg_student_service_offerings_updated_at
 -- 10. Clinic locations (a doctor can have multiple clinics)
 -- =============================================================================
 CREATE TABLE clinic_locations (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     doctor_id       UUID NOT NULL REFERENCES doctor_profiles(id) ON DELETE CASCADE,
     name_ar         VARCHAR(255),
     name_en         VARCHAR(255),
@@ -292,7 +292,7 @@ CREATE TRIGGER trg_clinic_locations_updated_at
 -- 11. Availability slots (weekly recurring windows for each clinic)
 -- =============================================================================
 CREATE TABLE availability_slots (
-    id            UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     clinic_id     UUID NOT NULL REFERENCES clinic_locations(id) ON DELETE CASCADE,
     day_of_week   day_of_week NOT NULL,
     start_time    TIME NOT NULL,
@@ -335,7 +335,7 @@ END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
 CREATE TABLE appointments (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id          UUID NOT NULL REFERENCES patient_profiles(id) ON DELETE CASCADE,
     doctor_id           UUID REFERENCES doctor_profiles(id) ON DELETE SET NULL,
     student_id          UUID REFERENCES student_profiles(id) ON DELETE SET NULL,
@@ -363,9 +363,7 @@ CREATE TABLE appointments (
     -- Prevent double-booking the same provider at the same time
     EXCLUDE USING GIST (
         COALESCE(doctor_id::TEXT, student_id::TEXT) WITH =,
-        TSTZRANGE(scheduled_date + scheduled_time,
-                  scheduled_date + scheduled_time + (duration_minutes || ' minutes')::INTERVAL,
-                  '[)') WITH &&
+        appointment_timerange(scheduled_date, scheduled_time, duration_minutes) WITH &&
     ) WHERE (status NOT IN ('cancelled', 'no_show'))
 );
 
@@ -384,29 +382,39 @@ CREATE TRIGGER trg_appointments_updated_at
 -- 13. Reviews & ratings (1:1 with completed appointments)
 -- =============================================================================
 CREATE TABLE reviews (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     appointment_id  UUID UNIQUE NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
     rating          SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     comment_ar      TEXT,
     comment_en      TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    -- Only allow reviews on completed appointments
-    CONSTRAINT chk_completed_appointment CHECK (
-        EXISTS (SELECT 1 FROM appointments a
-                 WHERE a.id = appointment_id AND a.status = 'completed')
-    )
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Deferrable so we can insert review + update status in same transaction
-ALTER TABLE reviews ALTER CONSTRAINT chk_completed_appointment DEFERRABLE INITIALLY DEFERRED;
+-- Only allow reviews on completed appointments (CHECK cannot contain a
+-- subquery, so this rule lives in a trigger).
+CREATE OR REPLACE FUNCTION check_review_appointment_completed()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM appointments a
+        WHERE a.id = NEW.appointment_id AND a.status = 'completed'
+    ) THEN
+        RAISE EXCEPTION 'Reviews can only be created for completed appointments';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_reviews_completed_appointment
+    BEFORE INSERT OR UPDATE OF appointment_id ON reviews
+    FOR EACH ROW EXECUTE FUNCTION check_review_appointment_completed();
 
 CREATE INDEX idx_reviews_appointment ON reviews(appointment_id);
 
 -- 14. Payments transaction log
 -- =============================================================================
 CREATE TABLE payments (
-    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     appointment_id      UUID NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
     amount              DECIMAL(10,2) NOT NULL CHECK (amount > 0),
     platform_fee        DECIMAL(10,2) NOT NULL DEFAULT 0 CHECK (platform_fee >= 0),

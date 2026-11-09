@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS appointments  CASCADE;
 DROP FUNCTION IF EXISTS appointment_timerange CASCADE;
 
 CREATE TABLE appointments (
-    id                UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     patient_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     service_id        UUID REFERENCES services(id) ON DELETE SET NULL,
@@ -35,7 +35,7 @@ CREATE TRIGGER trg_appointments_updated_at
 
 -- Recreate reviews (simplified, linked to new appointments)
 CREATE TABLE reviews (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     appointment_id  UUID UNIQUE NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
     rating          SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
     comment_ar      TEXT,
@@ -47,7 +47,7 @@ CREATE INDEX idx_reviews_appointment ON reviews(appointment_id);
 
 -- Recreate payments (simplified)
 CREATE TABLE payments (
-    id                UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     appointment_id    UUID NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
     amount            DECIMAL(10,2) NOT NULL CHECK (amount > 0),
     payment_method    VARCHAR(50),

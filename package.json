@@ -5,10 +5,13 @@
     "dev": "node scripts/dev.js",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
-    "build": "npm run build --prefix backend && npm run build --prefix frontend",
+    "build": "npm run build --prefix frontend",
     "lint": "npm run lint --prefix backend && npm run lint --prefix frontend",
-    "typecheck": "npm run typecheck --prefix backend; npm run typecheck --prefix frontend",
-    "db:migrate": "psql -U dental_app -d dental_platform -f backend/migrations/",
+    "typecheck": "npm run typecheck --prefix frontend",
+    "test": "npm test --prefix backend",
+    "db:migrate": "npm run db:migrate --prefix backend",
+    "db:seed": "npm run db:seed --prefix backend",
     "setup": "npm install --prefix backend && npm install --prefix frontend"
-  }
+  },
+  "version": "1.0.0"
 }

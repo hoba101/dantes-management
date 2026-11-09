@@ -1,7 +1,7 @@
 -- 15. Provider Portfolio (Before & After Images)
 -- =============================================================================
 CREATE TABLE provider_portfolio (
-    id          UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     profile_id  UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     image_url   TEXT NOT NULL,
     title       VARCHAR(255),

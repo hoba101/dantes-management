@@ -98,7 +98,7 @@ export default function BookingWidget({ providerId, role, fee }: BookingWidgetPr
           </h4>
           <DatePicker
             selected={selectedDate}
-            onChange={(date) => {
+            onChange={(date: Date | null) => {
               setSelectedDate(date);
               setError(""); // Clear error on change
             }}
